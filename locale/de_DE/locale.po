@@ -205,3 +205,13 @@ msgstr ""
 "vertrauenswürdigen Informationen aktuell zu halten. Lesen Sie mehr dazu "
 "unter <a href=\"https://orcid.org/blog/2017/08/10/six-ways-make-your-orcid-"
 "id-work-you\">Six ways to make your ORCID iD work for you!</a>\n"
+
+
+msgid "plugins.generic.orcidProfile.manager.settings.title.proxy"
+msgstr "Proxy Einstellungen"
+
+msgid "plugins.generic.orcidProfile.manager.settings.proxy.description"
+msgstr "Wenn Sie einen Proxy verwenden, geben Sie bitte hier den entsprechenden Endpunkt an (z.B. https://yourproxypath.de/endpoint/)."
+
+msgid "plugins.generic.orcidProfile.manager.settings.proxy.endpoint"
+msgstr "Proxy Endpunkt"

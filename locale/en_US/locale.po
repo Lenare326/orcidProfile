@@ -228,3 +228,12 @@ msgstr "Duplicate ORCiDs for contributors detected."
 
 msgid "plugins.generic.orcidProfile.verify.hasUnauthenticatedOrcid"
 msgstr "Unauthenticated ORCiDs for contributors detected."
+
+msgid "plugins.generic.orcidProfile.manager.settings.title.proxy"
+msgstr "Proxy Settings"
+
+msgid "plugins.generic.orcidProfile.manager.settings.proxy.description"
+msgstr "If you are using a proxy, please specify the appropriate endpoint here (e.g. https://yourproxypath.de/endpoint/)."
+
+msgid "plugins.generic.orcidProfile.manager.settings.proxy.endpoint"
+msgstr "Proxy Endpoint"
