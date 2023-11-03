@@ -31,6 +31,7 @@
 		orcidInput.attr('type', 'hidden');
 		// make the container div use the whole available space
 		orcidInput.parent().removeClass('pkp_helpers_quarter');
+		orcidInput.parent().addClass('pkp_helpers_half');
 		{if $orcid}
 		{* Display the ORCID id as an link *}
 		{if $orcidAuthenticated}
@@ -41,7 +42,17 @@
 		var orcidLink = $('<a href="{$orcid}" target="_blank">' + orcidIconSvg + '{$orcid|escape}</a>');
 		orcidLink.insertAfter(orcidInput);
 		{else}
-		$('<span>{translate key='plugins.generic.orcidProfile.author.orcidEmptyNotice'}</span>').insertAfter(orcidInput);
+		//$('<span>{translate key='plugins.generic.orcidProfile.author.orcidEmptyNotice'}</span>').insertAfter(orcidInput);
+		
+		$('<div>' +
+			'<select name="orcidSearch" id="orcidSearch" aria-required="true">' +
+				'<option value=""></option>' +
+				'<option value="Orcid1">Author, Name1, Orcid1</option>' + 
+				'<option value="Orcid2">Author, Name2, Orcid2</option>' + 
+				'<option value="Orcid3">Author, Name2, Orcid3</option>' + 
+			'</select>' +
+		'</div>').insertAfter(orcidInput);
+
 		{/if}
 	{rdelim});
 </script>
