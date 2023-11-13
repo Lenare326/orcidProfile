@@ -215,3 +215,12 @@ msgstr "Wenn Sie einen Proxy verwenden, geben Sie bitte hier den entsprechenden 
 
 msgid "plugins.generic.orcidProfile.manager.settings.proxy.endpoint"
 msgstr "Proxy Endpunkt"
+
+msgid "plugins.generic.orcidProfile.manager.settings.proxyClientId"
+msgstr "Proxy Client ID"
+
+msgid "plugins.generic.orcidProfile.manager.settings.proxyClientSecret"
+msgstr "Proxy Client Secret"
+
+msgid "plugins.generic.orcidProfile.manager.settings.description.globallyconfiguredProxy"
+msgstr "Der Proxy wurde in der globalen Konfigurationsdatei konfiguriert. Die folgenden Anmeldeinformationen sind hinterlegt."
