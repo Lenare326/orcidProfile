@@ -25,6 +25,8 @@ class OrcidProfileSettingsForm extends Form {
 		'orcidClientId' => 'string',
 		'orcidClientSecret' => 'string',
 		'proxyEndpoint' => 'string',
+		'proxyClientId' => 'string',
+		'proxyClientSecret' => 'string',
 		'sendMailToAuthorsOnPublication' => 'bool',
 		'logLevel' => 'string',
 		'isSandBox' => 'bool',

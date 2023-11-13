@@ -756,10 +756,14 @@ class OrcidProfilePlugin extends GenericPlugin {
 			$clientId = $request->getUserVar('orcidClientId');
 			$clientSecret = $request->getUserVar('orcidClientSecret');
 			$proxyEndpoint = $request->getUserVar('proxyEndpoint');
+			$proxyClientId = $request->getUserVar('proxyClientId');
+			$proxyClientSecret = $request->getUserVar('proxyClientSecret');
 		} else {
 			$clientId = $this->getSetting($contextId, 'orcidClientId');
 			$clientSecret = $this->getSetting($contextId, 'orcidClientSecret');
 			$proxyEndpoint = $this->getSetting($contextId, 'proxyEndpoint');
+			$proxyClientId = $this->getSetting($contextId, 'proxyClientId');
+			$proxyClientSecret = $this->getSetting($contextId, 'proxyClientSecret');
 
 		}
 
@@ -1019,18 +1023,21 @@ class OrcidProfilePlugin extends GenericPlugin {
 				$headers = [
 					'Content-type: application/json',
 					'Accept' => 'application/json',
-					//'Authorization' => 'Bearer ' . $author->getData('orcidAccessToken')
+					'x-client' => $this->getSetting($contextId, 'proxyClientId'),
+					'x-auth' => $this->getSetting($contextId, 'proxyClientSecret')
 				];
 				
 				// always use POST for the proxy
 				$httpClient = Application::get()->getHttpClient();
+				// get work item into accepted format for proxy
+				$pubForProxy = ['Orcid' => $author->getData('orcid'), 'PublicationJson' => $orcidWork];
 				try {
 					$response = $httpClient->request(
 						'POST',
 						$proxyEndpoint,
 						[
 							'headers' => $headers,
-							'json' => $orcidWork,
+							'json' => $pubForProxy,
 						]
 					);
 
@@ -1041,7 +1048,7 @@ class OrcidProfilePlugin extends GenericPlugin {
 					return new JSONMessage(false);
 				}
 				
-				// TODO: evaluate proxy response and handle errors (adapt below)
+				// TODO: evaluate proxy response (store put-code!) and handle errors (adapt below)
 				$httpstatus = $response->getStatusCode();
 				$this->logInfo("Response status: $httpstatus");
 				$responseHeaders = $response->getHeaders();
