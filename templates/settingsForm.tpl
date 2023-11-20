@@ -46,6 +46,34 @@
 				{/if}
 			{/fbvFormSection}
 		{/fbvFormArea}
+		
+		{* PROXY *}
+		{fbvFormArea id="proxySettings" title="plugins.generic.orcidProfile.manager.settings.title.proxy"}
+			{fbvFormSection}
+				{if $globallyConfigured}
+				<p>
+					{translate key="plugins.generic.orcidProfile.manager.settings.description.globallyconfiguredProxy"}
+				</p>
+				{/if}
+				<p>
+					{translate key="plugins.generic.orcidProfile.manager.settings.proxy.description"}
+				</p>
+				
+				{fbvElement type="text" id="proxyEndpoint" value=$proxyEndpoint label="plugins.generic.orcidProfile.manager.settings.proxy.endpoint" maxlength="200"}
+				
+				{fbvElement type="text" id="proxyClientId" value=$proxyClientId label="plugins.generic.orcidProfile.manager.settings.proxyClientId" maxlength="40" size=$fbvStyles.size.MEDIUM disabled=$globallyConfigured}
+				{if $globallyConfigured}
+					<p>
+						{translate key="plugins.generic.orcidProfile.manager.settings.proxyClientSecret"}: <i>{translate key="plugins.generic.orcidProfile.manager.settings.hidden"}</i>
+					</p>
+				{else}
+					{fbvElement type="text" id="proxyClientSecret" value=$proxyClientSecret label="plugins.generic.orcidProfile.manager.settings.proxyClientSecret" maxlength="40" size=$fbvStyles.size.MEDIUM disabled=$globallyConfigured}
+				{/if}
+
+			{/fbvFormSection}
+		{/fbvFormArea}
+		{* PROXY END*}
+		
         {if $applicationName == 'ojs2'}
         {fbvFormSection for="coutries" title="plugins.generic.orcidProfile.manager.settings.review"}
 			<p class="pkp_help">{translate key="plugins.generic.orcidProfile.manager.settings.review.help"}</p>

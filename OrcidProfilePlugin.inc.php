@@ -769,9 +769,15 @@ class OrcidProfilePlugin extends GenericPlugin {
 		if ($request->getUserVar('save') == 1) {
 			$clientId = $request->getUserVar('orcidClientId');
 			$clientSecret = $request->getUserVar('orcidClientSecret');
+			$proxyEndpoint = $request->getUserVar('proxyEndpoint');
+			$proxyClientId = $request->getUserVar('proxyClientId');
+			$proxyClientSecret = $request->getUserVar('proxyClientSecret');
 		} else {
 			$clientId = $this->getSetting($contextId, 'orcidClientId');
 			$clientSecret = $this->getSetting($contextId, 'orcidClientSecret');
+			$proxyEndpoint = $this->getSetting($contextId, 'proxyEndpoint');
+			$proxyClientId = $this->getSetting($contextId, 'proxyClientId');
+			$proxyClientSecret = $this->getSetting($contextId, 'proxyClientSecret');
 
 		}
 
@@ -1015,85 +1021,219 @@ class OrcidProfilePlugin extends GenericPlugin {
 			}
 
 
-			$headers = [
-				'Content-type: application/vnd.orcid+json',
-				'Accept' => 'application/json',
-				'Authorization' => 'Bearer ' . $author->getData('orcidAccessToken')
-			];
-
-			$this->logInfo("$method $uri");
-			$this->logInfo("Header: " . var_export($headers, true));
-
-			$httpClient = Application::get()->getHttpClient();
-			try {
-				$response = $httpClient->request(
-					$method,
-					$uri,
-					[
-						'headers' => $headers,
-						'json' => $orcidWork,
-						'allow_redirects' => ['strict' => true],
-					]
-				);
-
-			} catch (ClientException $exception) {
-				$reason = $exception->getResponse()->getBody(false);
-				$this->logInfo("Publication fail: $reason");
-				$templateMgr->assign('orcidAPIError', $reason);
-				return new JSONMessage(false);
+			// determine if author has shibboleth --> true: redirect request to proxy
+			$userDao = DAORegistry::getDAO('UserDAO');
+			$userSettingsDao = DAORegistry::getDAO('UserSettingsDAO');
+			$user = $userDao->getBySetting('orcid', $author->getData('orcid'));
+			
+			if(!empty($user)){
+				$usesShibboleth = !empty($userSettingsDao->getSetting($user->getId(), 'openid::shibboleth')); // check if the user is logged in with shibboleth
 			}
-			$httpstatus = $response->getStatusCode();
-			$this->logInfo("Response status: $httpstatus");
-			$responseHeaders = $response->getHeaders();
+			else{
+				$usesShibboleth = false;
+			}
+			// Note: if a user uses Shibboleth, but does not have an ORCID iD, the $user variable and hence $usesShibboleth will be empty and no switch to the proxy will happen
+				
+			// fork to proxy if a user connected via shibboleth
+			if($usesShibboleth){
+				$this->logInfo("Switched to proxy branch");
+				$proxyEndpoint = $this->getSetting($contextId, 'proxyEndpoint');
+				
+				
+				// build proxy request
+				$headers = [
+					'Content-type: application/json',
+					'Accept' => 'application/json',
+					'x-client' => $this->getSetting($contextId, 'proxyClientId'),
+					'x-auth' => $this->getSetting($contextId, 'proxyClientSecret')
+				];
+				
+				// always use POST for the proxy
+				$httpClient = Application::get()->getHttpClient();
+				// get work item into accepted format for proxy
+				$pubForProxy = ['Orcid' => $author->getData('orcid'), 'PublicationJson' => $orcidWork];
+				try {
+					$response = $httpClient->request(
+						'POST',
+						$proxyEndpoint,
+						[
+							'headers' => $headers,
+							'json' => $pubForProxy,
+						]
+					);
 
-			switch ($httpstatus) {
-				case 200:
-					// Work updated
-					$this->logInfo("Work updated in profile, putCode: $putCode");
-					$requestsSuccess[$orcid] = true;
-					break;
-				case 201:
-					$location = $responseHeaders['Location'][0];
-					// Extract the ORCID work put code for updates/deletion.
-					$putCode = intval(basename(parse_url($location, PHP_URL_PATH)));
-					$this->logInfo("Work added to profile, putCode: $putCode");
-					$author->setData('orcidWorkPutCode', $putCode);
-					$authorDao->updateObject($author);
-					$requestsSuccess[$orcid] = true;
-					break;
-				case 401:
-					// invalid access token, token was revoked
-					$error = json_decode($response->getBody(), true);
-					if ($error['error'] === 'invalid_token') {
-						$this->logError($error['error_description'] . ', deleting orcidAccessToken from author');
-						$this->removeOrcidAccessToken($author);
-					}
-					$requestsSuccess[$orcid] = false;
-					break;
-				case 403:
-					$this->logError('Work update forbidden: ' . $response->getBody());
-					$requestsSuccess[$orcid] = false;
-					break;
-				case 404:
-					// a work has been deleted from a ORCID record. putCode is no longer valid.
-					if ($method === 'PUT') {
-						$this->logError("Work deleted from ORCID record, deleting putCode form author");
-						$author->setData('orcidWorkPutCode', null);
-						$authorDao->updateObject($author);
+				} catch (ClientException $exception) {
+					// this catch block is not called if the proxy cannot be reached (but for all other errors it is)
+					$proxyResponse = json_decode($exception->getResponse()->getBody(),true)[$author->getData('orcid')]['pirgoo'];
+					$this->logError("Request to proxy failed with status " . $proxyResponse['status-code'] . ": " . $proxyResponse['message']);
+					return new JSONMessage(false);
+				}
+				
+				$httpstatus = $response->getStatusCode(); // this is the status code of the proxy response (not orcid API)! 
+				$this->logInfo("Response status: $httpstatus");
+
+				//evaluate proxy response (store put-code!) and handle errors
+				$proxyResponse = json_decode($exception->getResponse()->getBody(),true)[$author->getData('orcid')]['pirgoo'];
+				$orcidApiResponse = json_decode($response->getBody(), true)[$author->getData('orcid')]['orcid'];
+				
+
+				if(intval($proxyResponse['status-code']) == 200){
+					$orcidStatusCode = intval($orcidApiResponse['status-code']);
+					$error = $orcidApiResponse['error'];
+					$putCode = $orcidApiResponse['put-code'];
+					
+					if(!empty($error)){
+						// invalid access token, token was revoked
+						$error = json_decode($response->getBody(), true);
+						
+						$this->logError($response->getBody());
 						$requestsSuccess[$orcid] = false;
-					} else {
+					}
+					
+					else{
+						switch($orcidStatusCode){
+							case 200:
+								// Work updated
+								$this->logInfo("Work updated in profile, putCode: $putCode");
+								$requestsSuccess[$orcid] = true;
+								break;
+								
+							case 201:
+								// Work created
+								$this->logInfo("Work added to profile, putCode: $putCode");
+								$author->setData('orcidWorkPutCode', $putCode);
+								$authorDao->updateObject($author);
+								$requestsSuccess[$orcid] = true;
+								break;
+								
+							/* //NOTE: removed this case, because no status code is sent for an invalid access token
+								case 401:
+								// invalid access token, token was revoked
+								$error = json_decode($response->getBody(), true);
+								if ($error['error'] === 'invalid_token') {
+									$this->logError($error['error_description'] . ', deleting orcidAccessToken from author');
+									$this->removeOrcidAccessToken($author);
+								}
+								$requestsSuccess[$orcid] = false;
+								break;*/
+								
+							case 403:
+								$this->logError('Work update forbidden: ' . $response->getBody());
+								$requestsSuccess[$orcid] = false;
+								break;
+								
+							case 404:
+								// a work has been deleted from a ORCID record. putCode is no longer valid.
+								// even though 'method' variable is not used in the proxy, it can be used here since it is declared before forking to either proxy or regular orcid plugin workflow
+								if ($method === 'PUT') {
+									$this->logError("Work deleted from ORCID record, deleting putCode form author");
+									$author->setData('orcidWorkPutCode', null);
+									$authorDao->updateObject($author);
+									$requestsSuccess[$orcid] = false;
+								} else {
+									$this->logError("Unexpected status $orcidStatusCode response, body: " . $response->getBody());
+									$requestsSuccess[$orcid] = false;
+								}
+								break;
+							case 409:
+								$this->logError('Work already added to profile, response body: ' . $response->getBody());
+								$requestsSuccess[$orcid] = false;
+								break;
+							default:
+								$this->logError("Unexpected status $orcidStatusCode response, body: " . $response->getBody());
+								$requestsSuccess[$orcid] = false;
+						}
+					}
+				}
+				else{
+					$this->logError("Proxy error - Proxy responded with status code " . $proxyResponse['status-code'] . ": " . $proxyResponse['message']);
+				}
+					
+			}
+
+			else{
+				$headers = [
+					'Content-type: application/vnd.orcid+json',
+					'Accept' => 'application/json',
+					'Authorization' => 'Bearer ' . $author->getData('orcidAccessToken')
+				];
+
+				$this->logInfo("$method $uri");
+				$this->logInfo("Header: " . var_export($headers, true));
+
+				$httpClient = Application::get()->getHttpClient();
+				try {
+					$response = $httpClient->request(
+						$method,
+						$uri,
+						[
+							'headers' => $headers,
+							'json' => $orcidWork,
+						]
+					);
+
+				} catch (ClientException $exception) {
+					$reason = $exception->getResponse()->getBody(false);
+					$this->logInfo("Publication fail: $reason");
+					$templateMgr->assign('orcidAPIError', $reason);
+					return new JSONMessage(false);
+				}
+				
+				$httpstatus = $response->getStatusCode();
+				$this->logInfo("Response status: $httpstatus");
+				$responseHeaders = $response->getHeaders();
+
+				switch ($httpstatus) {
+					case 200:
+						// Work updated
+						$this->logInfo("Work updated in profile, putCode: $putCode");
+						$requestsSuccess[$orcid] = true;
+						break;
+					case 201:
+						$location = $responseHeaders['Location'][0];
+						// Extract the ORCID work put code for updates/deletion.
+						$putCode = intval(basename(parse_url($location, PHP_URL_PATH)));
+						$this->logInfo("Work added to profile, putCode: $putCode");
+						$author->setData('orcidWorkPutCode', $putCode);
+						$authorDao->updateObject($author);
+						$requestsSuccess[$orcid] = true;
+						break;
+					case 401:
+						// invalid access token, token was revoked
+						$error = json_decode($response->getBody(), true);
+						if ($error['error'] === 'invalid_token') {
+							$this->logError($error['error_description'] . ', deleting orcidAccessToken from author');
+							$this->removeOrcidAccessToken($author);
+						}
+						$requestsSuccess[$orcid] = false;
+						break;
+					case 403:
+						$this->logError('Work update forbidden: ' . $response->getBody());
+						$requestsSuccess[$orcid] = false;
+						break;
+					case 404:
+						// a work has been deleted from a ORCID record. putCode is no longer valid.
+						if ($method === 'PUT') {
+							$this->logError("Work deleted from ORCID record, deleting putCode form author");
+							$author->setData('orcidWorkPutCode', null);
+							$authorDao->updateObject($author);
+							$requestsSuccess[$orcid] = false;
+						} else {
+							$this->logError("Unexpected status $httpstatus response, body: " . $response->getBody());
+							$requestsSuccess[$orcid] = false;
+						}
+						break;
+					case 409:
+						$this->logError('Work already added to profile, response body: ' . $response->getBody());
+						$requestsSuccess[$orcid] = false;
+						break;
+					default:
 						$this->logError("Unexpected status $httpstatus response, body: " . $response->getBody());
 						$requestsSuccess[$orcid] = false;
-					}
-					break;
-				case 409:
-					$this->logError('Work already added to profile, response body: ' . $response->getBody());
-					$requestsSuccess[$orcid] = false;
-					break;
-				default:
-					$this->logError("Unexpected status $httpstatus response, body: " . $response->getBody());
-					$requestsSuccess[$orcid] = false;
+				}
+				
 			}
+
 		}
 		if (array_product($requestsSuccess)) {
 			return true;
