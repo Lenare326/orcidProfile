@@ -21,8 +21,8 @@ import('plugins.generic.orcidProfile.classes.OrcidValidator');
 
 define('ORCID_URL', 'https://orcid.org/');
 define('ORCID_URL_SANDBOX', 'https://sandbox.orcid.org/');
-define('ORCID_API_URL_PUBLIC', 'https://pub.orcid.org/');
-define('ORCID_API_URL_PUBLIC_SANDBOX', 'https://pub.sandbox.orcid.org/');
+define('ORCID_API_URL_PUBLIC', 'https://orcid.org/');
+define('ORCID_API_URL_PUBLIC_SANDBOX', 'https://sandbox.orcid.org/');
 define('ORCID_API_URL_MEMBER', 'https://api.orcid.org/');
 define('ORCID_API_URL_MEMBER_SANDBOX', 'https://api.sandbox.orcid.org/');
 define('ORCID_API_VERSION_URL', 'v3.0/');
@@ -190,7 +190,15 @@ class OrcidProfilePlugin extends GenericPlugin {
 				return parent::getSetting($contextId, $name);
 		}
 
-		return $config_value ?: parent::getSetting($contextId, $name);
+		$config_value = $config_value ?? parent::getSetting($contextId, $name);
+		if ($name == 'orcidProfileAPIPath') {
+			if ($config_value == 'https://pub.orcid.org/') {
+				$config_value = ORCID_API_URL_PUBLIC;
+			} elseif ($config_value == 'https://pub.sandbox.orcid.org/') {
+				$config_value = ORCID_API_URL_PUBLIC_SANDBOX;
+			}
+		}
+		return $config_value;
 	}
 
     /**
@@ -281,6 +289,12 @@ class OrcidProfilePlugin extends GenericPlugin {
 				'contexts' => array('frontend', 'backend')
 			)
 		);
+
+		switch ($template) {
+			case 'frontend/pages/userRegister.tpl':
+				$templateMgr->registerFilter('output', [$this, 'registrationFilter']);
+				break;
+		}
 		return false;
 	}
 
@@ -780,7 +794,7 @@ class OrcidProfilePlugin extends GenericPlugin {
 
 		switch ($request->getUserVar('verb')) {
 			case 'settings':
-				$templateMgr = TemplateManager::getManager();
+				$templateMgr = TemplateManager::getManager($request);
 				$templateMgr->registerPlugin('function', 'plugin_url', array($this, 'smartyPluginUrl'));
 				$apiOptions = [
 					ORCID_API_URL_PUBLIC => 'plugins.generic.orcidProfile.manager.settings.orcidProfileAPIPath.public',
@@ -894,6 +908,7 @@ class OrcidProfilePlugin extends GenericPlugin {
 							[
 								'headers' => $headers,
 								'json' => $orcidReview,
+								'allow_redirects' => ['strict' => true],
 							]
 						);
 					} catch (ClientException $exception) {
@@ -1004,7 +1019,6 @@ class OrcidProfilePlugin extends GenericPlugin {
 				// Remove put-code from body because the work has not yet been sent
 				unset($orcidWork['put-code']);
 			}
-
 
 
 			// determine if author has shibboleth --> true: redirect request to proxy
