@@ -893,28 +893,6 @@ class OrcidProfilePlugin extends GenericPlugin {
 						$method = "PUT";
 						$orcidReview['put-code'] = $putCode;
 					}
-					
-					// TODO: insert proxy fork here
-					
-					// determine if author has shibboleth --> true: redirect request to proxy
-					$userDao = DAORegistry::getDAO('UserDAO');
-					$userSettingsDao = DAORegistry::getDAO('UserSettingsDAO');
-					$user = $userDao->getBySetting('orcid', $reviewer->getData('orcid'));
-					
-					if(!empty($user)){
-						$usesShibboleth = !empty($userSettingsDao->getSetting($user->getId(), 'openid::shibboleth')); // check if the user is logged in with shibboleth
-					}
-					else{
-						$usesShibboleth = false;
-					}
-					
-					
-					
-					
-					
-					
-					
-					// ORIGINAL /ELSE
 					$headers = [
 						'Content-Type' => ' application/vnd.orcid+json; qs=4',
 						'Accept' => 'application/json',
