@@ -893,6 +893,9 @@ class OrcidProfilePlugin extends GenericPlugin {
 						$method = "PUT";
 						$orcidReview['put-code'] = $putCode;
 					}
+					
+					// TODO insert proxy fork here
+					
 					$headers = [
 						'Content-Type' => ' application/vnd.orcid+json; qs=4',
 						'Accept' => 'application/json',
@@ -1051,7 +1054,7 @@ class OrcidProfilePlugin extends GenericPlugin {
 				// always use POST for the proxy
 				$httpClient = Application::get()->getHttpClient();
 				// get work item into accepted format for proxy
-				$pubForProxy = ['Orcid' => $author->getData('orcid'), 'PublicationJson' => $orcidWork];
+				$pubForProxy = ['PubType' => 'work', 'Orcid' => $author->getData('orcid'), 'PublicationJson' => $orcidWork];
 				try {
 					$response = $httpClient->request(
 						'POST',
@@ -1073,7 +1076,7 @@ class OrcidProfilePlugin extends GenericPlugin {
 				$this->logInfo("Response status: $httpstatus");
 
 				//evaluate proxy response (store put-code!) and handle errors
-				$proxyResponse = json_decode($exception->getResponse()->getBody(),true)[$author->getData('orcid')]['pirgoo'];
+				$proxyResponse = json_decode($response->getBody(),true)[$author->getData('orcid')]['pirgoo'];
 				$orcidApiResponse = json_decode($response->getBody(), true)[$author->getData('orcid')]['orcid'];
 				
 
