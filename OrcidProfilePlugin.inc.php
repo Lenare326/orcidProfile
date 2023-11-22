@@ -873,6 +873,7 @@ class OrcidProfilePlugin extends GenericPlugin {
 	 */
 	public function publishReviewerWorkToOrcid(Submission $submission, Request $request) {
 		$context = $request->getContext();
+		$contextId = $context->getId();
 		$requestVars  = $request->getUserVars();
 		import('lib.pkp.classes.submission.reviewAssignment.ReviewAssignmentDAO');
 		$reviewAssignmentDao = DAORegistry::getDAO('ReviewAssignmentDAO'); /* @var $reviewAssignmentDao ReviewAssignmentDAO */
@@ -894,56 +895,178 @@ class OrcidProfilePlugin extends GenericPlugin {
 						$orcidReview['put-code'] = $putCode;
 					}
 					
-					// TODO insert proxy fork here
+					// determine if reviewer has shibboleth --> true: redirect request to proxy
+					$userDao = DAORegistry::getDAO('UserDAO');
+					$userSettingsDao = DAORegistry::getDAO('UserSettingsDAO');
+					$user = $userDao->getBySetting('orcid', $reviewer->getOrcid());
 					
-					$headers = [
-						'Content-Type' => ' application/vnd.orcid+json; qs=4',
-						'Accept' => 'application/json',
-						'Authorization' => 'Bearer '. $reviewer->getData("orcidAccessToken")
-					];
-					$httpClient = Application::get()->getHttpClient();
-					$requestsSuccess = [];
-
-					try {
-						$response = $httpClient->request(
-							$method,
-							$uri,
-							[
-								'headers' => $headers,
-								'json' => $orcidReview,
-								'allow_redirects' => ['strict' => true],
-							]
-						);
-					} catch (ClientException $exception) {
-						$reason = $exception->getResponse()->getBody(false);
-						$this->logInfo("Publication fail: $reason");
-						return new JSONMessage(false);
+					if(!empty($user)){
+						$usesShibboleth = !empty($userSettingsDao->getSetting($user->getId(), 'openid::shibboleth')); // check if the user is logged in with shibboleth
 					}
-					$httpstatus = $response->getStatusCode();
-					$this->logInfo("Response status: $httpstatus");
-					$responseHeaders = $response->getHeaders();
-					switch ($httpstatus) {
-						case 200:
-							$this->logInfo("Review updated in profile, putCode: $putCode");
-							$requestsSuccess[$orcid] = true;
-							break;
-						case 201:
-							$location = $responseHeaders['Location'][0];
-							// Extract the ORCID work put code for updates/deletion.
-							$putCode = basename(parse_url($location, PHP_URL_PATH));
-							$reviewer->setData('orcidReviewPutCode', $putCode);
-							$authorDao = DAORegistry::getDAO('AuthorDAO');
-							$authorDao->updateObject($reviewer);
-							$requestsSuccess[$orcid] = true;
-							$this->logInfo("Review added to profile, putCode: $putCode");
-							break;
-						default:
-							$this->logError("Unexpected status $httpstatus response, body: $responseHeaders");
-							$requestsSuccess[$orcid] = false;
+					else{
+						$usesShibboleth = false;
+					}
+					// Note: if a user uses Shibboleth, but does not have an ORCID iD, the $user variable and hence $usesShibboleth will be empty and no switch to the proxy will happen
+
+					// fork to proxy if a user connected via shibboleth
+					if($usesShibboleth){
+						$this->logInfo("publishReviewerWorkToOrcid - Switched to proxy branch");
+						$proxyEndpoint = $this->getSetting($contextId, 'proxyEndpoint');
+						
+						
+						// build proxy request
+						$headers = [
+							'Content-type: application/json',
+							'Accept' => 'application/json',
+							'x-client' => $this->getSetting($contextId, 'proxyClientId'),
+							'x-auth' => $this->getSetting($contextId, 'proxyClientSecret')
+						];
+						
+						// always use POST for the proxy
+						$httpClient = Application::get()->getHttpClient();
+						// get peer-review item into accepted format for proxy
+						$pubForProxy = ['PubType' => 'review', 'Orcid' => $reviewer->getData('orcid'), 'PublicationJson' => $orcidReview];
+						try {
+							$response = $httpClient->request(
+								'POST',
+								$proxyEndpoint,
+								[
+									'headers' => $headers,
+									'json' => $pubForProxy,
+								]
+							);
+
+						} catch (ClientException $exception) {
+							// this catch block is not called if the proxy cannot be reached (but for all other errors it is)
+							$proxyResponse = json_decode($exception->getResponse()->getBody(),true)[$reviewer->getData('orcid')]['pirgoo'];
+							$this->logError("Request to proxy failed with status " . $proxyResponse['status-code'] . ": " . $proxyResponse['message']);
+							return new JSONMessage(false);
+						}
+						
+						$httpstatus = $response->getStatusCode(); // this is the status code of the proxy response (not orcid API)! 
+						$this->logInfo("Proxy response status: $httpstatus");
+
+						//evaluate proxy response (store put-code!) and handle errors
+						$proxyResponse = json_decode($response->getBody(),true)[$reviewer->getData('orcid')]['pirgoo'];
+						$orcidApiResponse = json_decode($response->getBody(), true)[$reviewer->getData('orcid')]['orcid'];
+
+						if(intval($proxyResponse['status-code']) == 200){
+							$orcidStatusCode = intval($orcidApiResponse['status-code']);
+							$error = $orcidApiResponse['error'];
+							$putCode = $orcidApiResponse['put-code'];
+						
+							if(!empty($error)){
+								// invalid access token, token was revoked
+								$error = json_decode($response->getBody(), true);
+								
+								$this->logError($response->getBody());
+								$requestsSuccess[$orcid] = false;
+							}
+					
+							else{
+								switch($orcidStatusCode){
+									case 200:
+										// Review item updated
+										$this->logInfo("Review item updated in profile, putCode: $putCode");
+										$requestsSuccess[$orcid] = true;
+										break;
+										
+									case 201:
+										// Review item created
+										$reviewer->setData('orcidReviewPutCode', $putCode);
+										$authorDao = DAORegistry::getDAO('AuthorDAO');
+										$authorDao->updateObject($reviewer);
+										$requestsSuccess[$orcid] = true;
+										$this->logInfo("Review added to profile, putCode: $putCode");
+										break;
+										
+
+									case 403:
+										$this->logError('Review update forbidden: ' . $response->getBody());
+										$requestsSuccess[$orcid] = false;
+										break;
+										
+									case 404:
+										// a review item has been deleted from a ORCID record. putCode is no longer valid.
+										// even though 'method' variable is not used in the proxy, it can be used here since it is declared before forking to either proxy or regular orcid plugin workflow
+										if ($method === 'PUT') {
+											$this->logError("Review item deleted from ORCID record, deleting putCode form author");
+											$reviewer->setData('orcidReviewPutCode', null);
+											$authorDao->updateObject($reviewer);
+											$requestsSuccess[$orcid] = false;
+										} else {
+											$this->logError("Unexpected status $orcidStatusCode response, body: " . $response->getBody());
+											$requestsSuccess[$orcid] = false;
+										}
+										break;
+									case 409:
+										$this->logError('Review item already added to profile, response body: ' . $response->getBody());
+										$requestsSuccess[$orcid] = false;
+										break;
+									default:
+										$this->logError("Unexpected status $orcidStatusCode response, body: " . $response->getBody());
+										$requestsSuccess[$orcid] = false;
+								}
+							}
+						}
+						else{
+							$this->logError("Proxy error - Proxy responded with status code " . $proxyResponse['status-code'] . ": " . $proxyResponse['message']);
+						}
+
+					}
+					
+					
+					else{
+						$headers = [
+							'Content-Type' => ' application/vnd.orcid+json; qs=4',
+							'Accept' => 'application/json',
+							'Authorization' => 'Bearer '. $reviewer->getData("orcidAccessToken")
+						];
+						$httpClient = Application::get()->getHttpClient();
+						$requestsSuccess = [];
+
+						try {
+							$response = $httpClient->request(
+								$method,
+								$uri,
+								[
+									'headers' => $headers,
+									'json' => $orcidReview,
+									'allow_redirects' => ['strict' => true],
+								]
+							);
+						} catch (ClientException $exception) {
+							$reason = $exception->getResponse()->getBody(false);
+							$this->logInfo("Publication fail: $reason");
+							return new JSONMessage(false);
+						}
+						$httpstatus = $response->getStatusCode();
+						$this->logInfo("Response status: $httpstatus");
+						$responseHeaders = $response->getHeaders();
+						switch ($httpstatus) {
+							case 200:
+								$this->logInfo("Review updated in profile, putCode: $putCode");
+								$requestsSuccess[$orcid] = true;
+								break;
+							case 201:
+								$location = $responseHeaders['Location'][0];
+								// Extract the ORCID work put code for updates/deletion.
+								$putCode = basename(parse_url($location, PHP_URL_PATH));
+								$reviewer->setData('orcidReviewPutCode', $putCode);
+								$authorDao = DAORegistry::getDAO('AuthorDAO');
+								$authorDao->updateObject($reviewer);
+								$requestsSuccess[$orcid] = true;
+								$this->logInfo("Review added to profile, putCode: $putCode");
+								break;
+							default:
+								$this->logError("Unexpected status $httpstatus response, body: $responseHeaders");
+								$requestsSuccess[$orcid] = false;
+						}
+					
 					}
 				}
 
-				}
+			}
 
 		}
 	}
