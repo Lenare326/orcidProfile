@@ -878,6 +878,8 @@ class OrcidProfilePlugin extends GenericPlugin {
 		import('lib.pkp.classes.submission.reviewAssignment.ReviewAssignmentDAO');
 		$reviewAssignmentDao = DAORegistry::getDAO('ReviewAssignmentDAO'); /* @var $reviewAssignmentDao ReviewAssignmentDAO */
 		$reviewAssignmentId = $requestVars['reviewAssignmentId'];
+		
+		
 		if (isset($reviewAssignmentId)) {
 		$review = $reviewAssignmentDao->getById($reviewAssignmentId);
 		$reviewer = Services::get('user')->get($review->getData('reviewerId'));
@@ -1017,6 +1019,7 @@ class OrcidProfilePlugin extends GenericPlugin {
 					
 					
 					else{
+						$this->logInfo("publishReviewerWorkToOrcid - on ORCID branch");
 						$headers = [
 							'Content-Type' => ' application/vnd.orcid+json; qs=4',
 							'Accept' => 'application/json',
