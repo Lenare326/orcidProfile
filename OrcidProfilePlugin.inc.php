@@ -929,6 +929,7 @@ class OrcidProfilePlugin extends GenericPlugin {
 						// get peer-review item into accepted format for proxy
 						$pubForProxy = ['PubType' => 'review', 'Orcid' => $reviewer->getData('orcid'), 'PublicationJson' => $orcidReview];
 						try {
+							$this->logInfo("publishReviewerWorkToOrcid - Sending request to proxy");
 							$response = $httpClient->request(
 								'POST',
 								$proxyEndpoint,
@@ -1019,7 +1020,7 @@ class OrcidProfilePlugin extends GenericPlugin {
 					
 					
 					else{
-						$this->logInfo("publishReviewerWorkToOrcid - on ORCID branch");
+						$this->logInfo("publishReviewerWorkToOrcid - switched to ORCID branch");
 						$headers = [
 							'Content-Type' => ' application/vnd.orcid+json; qs=4',
 							'Accept' => 'application/json',
@@ -1029,6 +1030,7 @@ class OrcidProfilePlugin extends GenericPlugin {
 						$requestsSuccess = [];
 
 						try {
+							$this->logInfo("publishReviewerWorkToOrcid - Sending request to ORCID");
 							$response = $httpClient->request(
 								$method,
 								$uri,
@@ -1165,7 +1167,7 @@ class OrcidProfilePlugin extends GenericPlugin {
 				
 			// fork to proxy if a user connected via shibboleth
 			if($usesShibboleth){
-				$this->logInfo("Switched to proxy branch");
+				$this->logInfo("publishAuthorWorkToOrcid - Switched to proxy branch");
 				$proxyEndpoint = $this->getSetting($contextId, 'proxyEndpoint');
 				
 				
@@ -1182,6 +1184,7 @@ class OrcidProfilePlugin extends GenericPlugin {
 				// get work item into accepted format for proxy
 				$pubForProxy = ['PubType' => 'work', 'Orcid' => $author->getData('orcid'), 'PublicationJson' => $orcidWork];
 				try {
+					$this->logInfo("publishAuthorWorkToOrcid - Sending request to proxy");
 					$response = $httpClient->request(
 						'POST',
 						$proxyEndpoint,
@@ -1281,6 +1284,7 @@ class OrcidProfilePlugin extends GenericPlugin {
 			}
 
 			else{
+				$this->logInfo("publishAuthorWorkToOrcid - Switched to ORCID branch");
 				$headers = [
 					'Content-type: application/vnd.orcid+json',
 					'Accept' => 'application/json',
@@ -1292,6 +1296,7 @@ class OrcidProfilePlugin extends GenericPlugin {
 
 				$httpClient = Application::get()->getHttpClient();
 				try {
+					$this->logInfo("publishAuthorWorkToOrcid - Sending request to ORCID");
 					$response = $httpClient->request(
 						$method,
 						$uri,
