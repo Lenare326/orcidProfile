@@ -938,22 +938,12 @@ class OrcidProfilePlugin extends GenericPlugin {
 									'json' => $pubForProxy,
 								]
 							);
-
-						} catch (ClientException $exception) {
-							// this catch block is not called if the proxy cannot be reached (but for all other errors it is)
-							$proxyResponse = json_decode($exception->getResponse()->getBody(),true)[$reviewer->getData('orcid')]['pirgoo'];
-							$this->logError("Request to proxy failed with status " . $proxyResponse['status-code'] . ": " . $proxyResponse['message']);
-							return new JSONMessage(false);
-						}
-						
-						$httpstatus = $response->getStatusCode(); // this is the status code of the proxy response (not orcid API)! 
-						$this->logInfo("Proxy response status: $httpstatus");
-
-						//evaluate proxy response (store put-code!) and handle errors
-						$proxyResponse = json_decode($response->getBody(),true)[$reviewer->getData('orcid')]['pirgoo'];
-						$orcidApiResponse = json_decode($response->getBody(), true)[$reviewer->getData('orcid')]['orcid'];
-
-						if(intval($proxyResponse['status-code']) == 200){
+							
+							// process the successful response
+							// evaluate proxy response (store put-code!) and handle errors
+							$proxyResponse = json_decode($response->getBody(),true)[$reviewer->getData('orcid')]['pirgoo'];
+							$orcidApiResponse = json_decode($response->getBody(), true)[$reviewer->getData('orcid')]['orcid'];
+							
 							$orcidStatusCode = intval($orcidApiResponse['status-code']);
 							$error = $orcidApiResponse['error'];
 							$putCode = $orcidApiResponse['put-code'];
@@ -1011,11 +1001,36 @@ class OrcidProfilePlugin extends GenericPlugin {
 										$requestsSuccess[$orcid] = false;
 								}
 							}
-						}
-						else{
-							$this->logError("Proxy error - Proxy responded with status code " . $proxyResponse['status-code'] . ": " . $proxyResponse['message']);
-						}
-
+						} catch (ClientException $exception) {
+							// this catch block is not called if the proxy cannot be reached (but for all other errors it is)
+							$response = $exception->getResponse();
+							$statusCode = $response->getStatusCode();
+							
+							// for 400 and 404 more detailed information is available from $proxyResponse; not available for the other error codes!
+							switch($statusCode){
+								case 400:
+									$proxyResponse = json_decode($response->getBody(),true)[$author->getData('orcid')]['pirgoo'];
+									$this->logError("Proxy error - Proxy responded with status code " . statusCode . ": " . $proxyResponse['message']);	
+									break;
+								case 401:
+									$reason = $response->getBody(false);
+									$this->logError("Proxy error - Proxy responded with status code " . $statusCode . " - " . $reason . ". " . "Incorrect Proxy Client Credentials!");	
+									break;
+								case 404:
+									$proxyResponse = json_decode($response->getBody(),true)[$author->getData('orcid')]['pirgoo'];
+									$this->logError("Proxy error - Proxy responded with status code " . $statusCode . ": " . $proxyResponse['message']);	
+									break;
+								case 500:
+									$reason = $response->getBody(false);
+									$this->logError("Proxy error - Proxy responded with status code " . $statusCode . " - " . $reason . ".");
+									break;
+								default:
+									// default response for status codes that do not returnn the proxyResponse dictionary
+									$reason = $response->getBody(false);
+									$this->logError("Proxy error - Proxy responded with status code " . $statusCode . " - " . $reason . ".");
+							}
+							return new JSONMessage(false);
+						}	
 					}
 					
 					
