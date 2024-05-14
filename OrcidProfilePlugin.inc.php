@@ -1208,25 +1208,23 @@ class OrcidProfilePlugin extends GenericPlugin {
 							'json' => $pubForProxy,
 						]
 					);
-					
+
 					// process the successful response
 					//evaluate proxy response (store put-code!) and handle errors
 					$proxyResponse = json_decode($response->getBody(),true)[$author->getData('orcid')]['pirgoo'];
 					$orcidApiResponse = json_decode($response->getBody(), true)[$author->getData('orcid')]['orcid'];
-					
 					$orcidStatusCode = intval($orcidApiResponse['status-code']);
 					$error = $orcidApiResponse['error'];
 					$putCode = $orcidApiResponse['put-code'];
-					
+						
 					if(!empty($error)){
 						// invalid access token, token was revoked
 						$error = json_decode($response->getBody(), true);
-						
-						$this->logError($response->getBody());
+						$this->logError($error);
 						$requestsSuccess[$orcid] = false;
 					}
 					
-					else{
+					else {
 						switch($orcidStatusCode){
 							case 200:
 								// Work updated
@@ -1278,32 +1276,48 @@ class OrcidProfilePlugin extends GenericPlugin {
 							default:
 								$this->logError("Unexpected status $orcidStatusCode response, body: " . $response->getBody());
 								$requestsSuccess[$orcid] = false;
+							}
 						}
-					}
-				
-					
+							
 				} catch (ClientException $exception) {
 					// this catch block is not called if the proxy cannot be reached (but for all other errors it is)
 					$response = $exception->getResponse();
 					$statusCode = $response->getStatusCode();
 					
-					// for 400 and 404 more detailed information is available from $proxyResponse; not available for the other error codes!
 					switch($statusCode){
 						case 400:
 							$proxyResponse = json_decode($response->getBody(),true)[$author->getData('orcid')]['pirgoo'];
-							$this->logError("Proxy error - Proxy responded with status code " . statusCode . ": " . $proxyResponse['message']);	
+							$this->logError("Proxy error - Proxy responded with status code " . $statusCode . ": " . $proxyResponse['message']);	
 							break;
 						case 401:
-							$reason = $response->getBody(false);
-							$this->logError("Proxy error - Proxy responded with status code " . $statusCode . " - " . $reason . ". " . "Incorrect Proxy Client Credentials!");	
+							// distinguish between a proxyAPI 401 and proxy 401 (the latter does not come with a response message)
+							$responseDict = json_decode($response->getBody(),true);
+							$authorOrcid = $author->getData('orcid');
+							if(array_key_exists($authorOrcid, $responseDict)){
+								$proxyResponse = $responseDict[$authorOrcid]['pirgoo'];
+								$this->logError("Proxy error - Proxy responded with status code " . $statusCode . ": " . $proxyResponse['message']);	
+							}
+							else{
+								$reason = $response->getBody(false);
+								$this->logError("Proxy error - Proxy responded with status code " . $statusCode . " - " . $reason . ". " . "Incorrect Proxy Client Credentials!");	
+							}
 							break;
 						case 404:
 							$proxyResponse = json_decode($response->getBody(),true)[$author->getData('orcid')]['pirgoo'];
 							$this->logError("Proxy error - Proxy responded with status code " . $statusCode . ": " . $proxyResponse['message']);	
 							break;
 						case 500:
-							$reason = $response->getBody(false);
-							$this->logError("Proxy error - Proxy responded with status code " . $statusCode . " - " . $reason . ".");
+							// distinguish between a proxyAPI 500 and proxy 500 (the latter does not come with a response message)
+							$responseDict = json_decode($response->getBody(),true);
+							$authorOrcid = $author->getData('orcid');
+							if(array_key_exists($authorOrcid, $responseDict)){
+								$proxyResponse = $responseDict[$authorOrcid]['pirgoo'];
+								$this->logError("Proxy error - Proxy responded with status code " . $statusCode . ": " . $proxyResponse['message']);	
+							}
+							else{
+								$reason = $response->getBody(false);
+								$this->logError("Proxy error - Proxy responded with status code " . $statusCode . " - " . $reason . ". " . "Connection failed or database error!");	
+							}
 							break;
 						default:
 							// default response for status codes that do not returnn the proxyResponse dictionary
