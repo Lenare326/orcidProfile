@@ -1009,20 +1009,39 @@ class OrcidProfilePlugin extends GenericPlugin {
 							// for 400 and 404 more detailed information is available from $proxyResponse; not available for the other error codes!
 							switch($statusCode){
 								case 400:
-									$proxyResponse = json_decode($response->getBody(),true)[$author->getData('orcid')]['pirgoo'];
+									$proxyResponse = json_decode($response->getBody(),true)[$reviewer->getData('orcid')]['pirgoo'];
 									$this->logError("Proxy error - Proxy responded with status code " . statusCode . ": " . $proxyResponse['message']);	
 									break;
 								case 401:
-									$reason = $response->getBody(false);
-									$this->logError("Proxy error - Proxy responded with status code " . $statusCode . " - " . $reason . ". " . "Incorrect Proxy Client Credentials!");	
+									// distinguish between a proxyAPI 401 and proxy 401 (the latter does not come with a response message)
+									$responseDict = json_decode($response->getBody(),true);
+									$reviewerOrcid = $reviewer->getData('orcid');
+									if(array_key_exists($reviewerOrcid, $responseDict)){
+										$proxyResponse = $responseDict[$reviewerOrcid]['pirgoo'];
+										$this->logError("Proxy error - Proxy responded with status code " . $statusCode . ": " . $proxyResponse['message']);	
+									}
+									else{
+										$reason = $response->getBody(false);
+										$this->logError("Proxy error - Proxy responded with status code " . $statusCode . " - " . $reason . ". " . "Incorrect Proxy Client Credentials!");	
+									}
+									break;
 									break;
 								case 404:
-									$proxyResponse = json_decode($response->getBody(),true)[$author->getData('orcid')]['pirgoo'];
+									$proxyResponse = json_decode($response->getBody(),true)[$reviewer->getData('orcid')]['pirgoo'];
 									$this->logError("Proxy error - Proxy responded with status code " . $statusCode . ": " . $proxyResponse['message']);	
 									break;
 								case 500:
-									$reason = $response->getBody(false);
-									$this->logError("Proxy error - Proxy responded with status code " . $statusCode . " - " . $reason . ".");
+									// distinguish between a proxyAPI 500 and proxy 500 (the latter does not come with a response message)
+									$responseDict = json_decode($response->getBody(),true);
+									$reviewerOrcid = $reviewer->getData('orcid');
+									if(array_key_exists($reviewerOrcid, $responseDict)){
+										$proxyResponse = $responseDict[$reviewerOrcid]['pirgoo'];
+										$this->logError("Proxy error - Proxy responded with status code " . $statusCode . ": " . $proxyResponse['message']);	
+									}
+									else{
+										$reason = $response->getBody(false);
+										$this->logError("Proxy error - Proxy responded with status code " . $statusCode . " - " . $reason . ". " . "Connection failed or database error!");	
+									}
 									break;
 								default:
 									// default response for status codes that do not returnn the proxyResponse dictionary
@@ -1302,10 +1321,12 @@ class OrcidProfilePlugin extends GenericPlugin {
 								$this->logError("Proxy error - Proxy responded with status code " . $statusCode . " - " . $reason . ". " . "Incorrect Proxy Client Credentials!");	
 							}
 							break;
+							
 						case 404:
 							$proxyResponse = json_decode($response->getBody(),true)[$author->getData('orcid')]['pirgoo'];
 							$this->logError("Proxy error - Proxy responded with status code " . $statusCode . ": " . $proxyResponse['message']);	
 							break;
+							
 						case 500:
 							// distinguish between a proxyAPI 500 and proxy 500 (the latter does not come with a response message)
 							$responseDict = json_decode($response->getBody(),true);
